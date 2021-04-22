@@ -5,13 +5,16 @@ import random
 import os
 import enchant
 import collections
+import string
+import re
+import time
 
 import neat
 from neat.activations import sigmoid_activation
 
-TIME_CONSTANT = 1
+TIME_CONSTANT = .1
 RUNS = 5
-TIME_PER_RUN = 60.0
+TIME_PER_RUN =  10
 INITIALREWARD = 10
 INPUT = [ord('h'), ord('e'), ord('l'), ord('l'), ord('o'), 0,0,0,0,0]
 
@@ -52,6 +55,36 @@ def runNetwork(genome, config):
 
     return output
 
+found = {}
+
+def eval_genomes_for_words(genomes, config):
+    d = enchant.Dict("en_US")
+    for genome_id, genome in genomes:
+
+        output = runNetwork(genome, config)
+
+        words = re.split(' ',output)
+
+        genome.fitness = 0
+        seen = collections.defaultdict(int)
+        chars = collections.defaultdict(int)
+
+        for i in range(len(output)):
+            if output[i].isalpha():
+                chars[output[i]]+=1
+                genome.fitness+=max(1,INITIALREWARD-chars[output[i]])
+            if output[i] == ' ':
+                if i>0 and output[i-1] != ' ':
+                    genome.fitness+=75
+        for word in words:
+            if word != "" and word.isalpha() and d.check(word):
+                if len(word) > 1 or word == 'a' or word == 'A' or word == 'I':
+                    seen[word]+=500
+                    if word not in found:
+                        found[word] = True
+                        time.sleep(3)
+                    genome.fitness+=max(len(word)*1000-seen[word], 10)
+
 def eval_genomes_for_char(genomes, config):
     for genome_id, genome in genomes:
         genome.fitness = 0
@@ -61,12 +94,25 @@ def eval_genomes_for_char(genomes, config):
         charCounts = collections.defaultdict(int)
 
         for i in output:
-            if i.isalpha():
+            if i.isalpha() or i == ' ':
                 charCounts[i]+=1
-                genome.fitness+=INITIALREWARD - charCounts[i]
+                genome.fitness+=max(INITIALREWARD - charCounts[i],1)
 
 def floatToChar(num):
-    return chr(int(num*1000)%127)
+    c = chr(int(num*1000)%127)
+
+    if c.isalpha() or c == ' ':
+        return c
+    
+    new = ord(c)%53
+
+    if new < 26:
+        c = chr(65+new)
+    elif new < 52:
+        c = chr(97+new-26)
+    else:
+        c = ' '
+    return c
 
 def main():
    # NUMBER_OF_NODES = 50
@@ -92,8 +138,10 @@ def main():
     pop.add_reporter(stats)
     pop.add_reporter(neat.StdOutReporter(True))
   
-    winner = pop.run(eval_genomes_for_char, 300)
+    winner = pop.run(eval_genomes_for_words, 300)
 
+    for word in found:
+        print(word)
     print(runNetwork(winner, config))
 
 main()
